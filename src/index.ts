@@ -1,4 +1,29 @@
 import NewTask from "./server";
-let url = 'https://fangdaoproduct.yaocaiwuziyou.com/316bf014b1b448d38fc20794cac3e7be/d90bf2bdc5775b9e10dcc25a360fbe6b-sd-encrypt-stream.m3u8?auth_key=1636322753-a2feeb81994f407db4d9075fc09c52e8-0-d7407308d446bbcf11162bb6dd148e68'
+import Db from "./model/query";
 
-var newTask = new NewTask({ m3u8_url: url, taskName: 'test' })
+Db.queryVideos().then(res => {
+    test(res)
+})
+
+
+const test = async (list) => {
+    for (let i = 0; i < list.length; i++) {
+        const item = list[i]
+        const {
+            aliAllUrl,
+            video_name,
+            course_id,
+            course_name,
+            week_id,
+            week_title,
+            chapter_id,
+            chapter_name,
+            sort,
+        } = item
+        const taskName = `${course_id}_${course_name}_${week_id}_${week_title}_` +
+            `${chapter_id}_${chapter_name}_${sort}_${video_name}`
+        let newTask = new NewTask({ m3u8_url: aliAllUrl, taskName })
+        await newTask.addTask(newTask.newTaskInfo)
+        await newTask.startDownload(newTask.downloadTask, undefined)
+    }
+}

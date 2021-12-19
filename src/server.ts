@@ -22,14 +22,14 @@ const {
   HttpsProxyAgent
 } = require('hpagent');
 const nconf = require('nconf');
+
 const httpTimeout = {
   socket: 30000,
   request: 30000,
   response: 60000
 };
-let videoDatas = [];
-let globalCond = {};
-function formatTime(duration) {
+
+const formatTime = (duration) => {
   let sec = Math.floor(duration % 60).toLocaleString();
   let min = Math.floor(duration / 60 % 60).toLocaleString();
   let hour = Math.floor(duration / 3600 % 60).toLocaleString();
@@ -38,17 +38,33 @@ function formatTime(duration) {
   if (hour.length != 2) hour = '0' + hour;
   return hour + ":" + min + ":" + sec;
 }
-function sleep(ms) {
+const sleep = (ms) => {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-function queue_callback(that, callback) {
+const queue_callback = (that: QueueObject, callback) => {
   that.callback(callback);
 }
+
+type Video = {
+  id: string,
+  url: string,
+  url_prefix?: string,
+  dir: string,
+  segment_total: number,
+  segment_downloaded: number,
+  time: string,
+  status: string,
+  isLiving: boolean,
+  headers: object,
+  taskName: string,
+  myKeyIV: string,
+  taskIsDelTs?: boolean,
+  success?: boolean,
+  videopath: string
+}
+const globalCond = {};
 const pathConfigDir = 'config';
-let pathDownloadDir = 'video';
-let proxy_agent = null;
 const pathConfigFile = path.join(pathConfigDir, 'config.json');
-const pathVideoDB = path.join(pathConfigDir, 'config_videos.json');
 const logger = winston.createLogger({
   level: 'debug',
   format: winston.format.combine(
@@ -76,11 +92,9 @@ try {
 } catch (error) {
   logger.error('Please correct the mistakes in your configuration file: [%s].\n' + error,)
 }
-pathDownloadDir = nconf.get('SaveVideoDir');
-console.log(pathVideoDB)
-console.log(pathDownloadDir)
+const pathDownloadDir = nconf.get('SaveVideoDir');
 const config_proxy = nconf.get('config_proxy');
-let httpProxy = new HttpProxyAgent({
+const httpProxy = new HttpProxyAgent({
   keepAlive: true,
   keepAliveMsecs: 1000,
   maxSockets: 256,
@@ -88,11 +102,11 @@ let httpProxy = new HttpProxyAgent({
   scheduling: 'lifo',
   proxy: config_proxy
 });
-proxy_agent = config_proxy ? {
+const proxy_agent = config_proxy ? {
   http: httpProxy,
   https: httpProxy
 } : null;
-interface NewTaskObjectInterface {
+type NewTaskInfo = {
   url: string,
   headers: string,
   myKeyIV: string,
@@ -100,7 +114,7 @@ interface NewTaskObjectInterface {
   taskIsDelTs: boolean,
   url_prefix: string
 }
-interface DownloadTaskObjectInterface {
+type DownloadTask = {
   url: string,
   headers: object,
   myKeyIV: string,
@@ -124,6 +138,8 @@ class NewTask {
   m3u8_url_prefix: string
   addTaskMessage: string
   playlists: any
+  newTaskInfo: NewTaskInfo;
+  downloadTask: DownloadTask;
   constructor({
     m3u8_url = '',
     playlistUri = '',
@@ -132,6 +148,10 @@ class NewTask {
     taskName = '',
     taskIsDelTs = false,
     m3u8_url_prefix = '', }) {
+    if (!m3u8_url) {
+      throw new Error('请输入正确的M3U8-URL或者导入(.m3u8)文件')
+
+    }
     this.m3u8_url = m3u8_url
     this.playlistUri = playlistUri
     this.headers = headers
@@ -139,127 +159,132 @@ class NewTask {
     this.taskName = taskName
     this.taskIsDelTs = taskIsDelTs
     this.m3u8_url_prefix = m3u8_url_prefix
-    console.log(headers)
-    if (this.m3u8_url != "") {
-      let m3u8_url = this.m3u8_url
-      if (this.playlistUri != "") {
-        const uri = this.playlistUri
-        if (!uri.startsWith("http")) {
-          m3u8_url =
-            uri[0] == "/"
-              ? m3u8_url.substr(0, m3u8_url.indexOf("/", 10)) + uri
-              : m3u8_url.replace(/\/[^\/]*((\?.*)|$)/, "/") + uri
-        } else {
-          m3u8_url = uri
+    if (this.playlistUri != "") {
+      const uri = this.playlistUri
+      if (!uri.startsWith("http")) {
+        m3u8_url =
+          uri[0] == "/"
+            ? m3u8_url.substr(0, m3u8_url.indexOf("/", 10)) + uri
+            : m3u8_url.replace(/\/[^\/]*((\?.*)|$)/, "/") + uri
+      } else {
+        m3u8_url = uri
+      }
+    }
+    this.newTaskInfo = {
+      url: m3u8_url,
+      headers: this.headers,
+      myKeyIV: this.myKeyIV,
+      taskName: this.taskName,
+      taskIsDelTs: this.taskIsDelTs,
+      url_prefix: this.m3u8_url_prefix,
+    }
+    this.addTaskMessage = "正在检查链接..."
+
+  }
+  addTask(object: NewTaskInfo) {
+    return new Promise(async (resolve, reject) => {
+
+      let hlsSrc = object.url;
+      let _headers = {};
+      if (object.headers) {
+        let __ = object.headers.match(/(.*?): ?(.*?)(\n|\r|$)/g);
+        __ && __.forEach((_) => {
+          let ___ = _.match(/(.*?): ?(.*?)(\n|\r|$)/i);
+          ___ && (_headers[___[1]] = ___[2]);
+        });
+      }
+      let mes = hlsSrc.match(/^https?:\/\/[^/]*/);
+      let _hosts = '';
+      if (mes && mes.length >= 1) {
+        _hosts = mes[0];
+        if (_headers['Origin'] == null && _headers['origin'] == null) {
+          _headers['Origin'] = _hosts;
+        }
+        if (_headers['Referer'] == null && _headers['referer'] == null) {
+          _headers['Referer'] = _hosts;
         }
       }
-      this.addTask({
-        url: m3u8_url,
-        headers: this.headers,
-        myKeyIV: this.myKeyIV,
-        taskName: this.taskName,
-        taskIsDelTs: this.taskIsDelTs,
-        url_prefix: this.m3u8_url_prefix,
-      })
-      this.addTaskMessage = "正在检查链接..."
-    } else {
-      console.log({
-        title: "提示",
-        type: "error",
-        message: "请输入正确的M3U8-URL或者导入(.m3u8)文件",
-        offset: 100,
-        duration: 1000,
-      })
-    }
-  }
-  async addTask(object: NewTaskObjectInterface) {
-    let hlsSrc = object.url;
-    let _headers = {};
-    if (object.headers) {
-      let __ = object.headers.match(/(.*?): ?(.*?)(\n|\r|$)/g);
-      __ && __.forEach((_) => {
-        let ___ = _.match(/(.*?): ?(.*?)(\n|\r|$)/i);
-        ___ && (_headers[___[1]] = ___[2]);
-      });
-    }
-    let mes = hlsSrc.match(/^https?:\/\/[^/]*/);
-    let _hosts = '';
-    if (mes && mes.length >= 1) {
-      _hosts = mes[0];
-      if (_headers['Origin'] == null && _headers['origin'] == null) {
-        _headers['Origin'] = _hosts;
+      let object1: DownloadTask = {
+        ...object,
+        headers: _headers
       }
-      if (_headers['Referer'] == null && _headers['referer'] == null) {
-        _headers['Referer'] = _hosts;
-      }
-    }
-    let object1: DownloadTaskObjectInterface = {
-      ...object,
-      headers: _headers
-    }
-    let info = '解析资源失败！';
-    let code = -1;
-    let parser = new Parser();
-    if (/^file:\/\/\//g.test(hlsSrc)) {
-      parser.push(fs.readFileSync(hlsSrc.replace(/^file:\/\/\//g, '')));
-      parser.end();
-    } else {
-      console.log(_headers)
-      for (let index = 0; index < 3; index++) {
-        let response = await got(hlsSrc, {
-          headers: _headers,
-          timeout: httpTimeout,
-          agent: proxy_agent
-        }).catch(logger.error); {
-          if (response && response.body != null &&
-            response.body != '') {
-            parser.push(response.body);
-            parser.end();
-            if (parser.manifest.segments.length == 0 && parser.manifest.playlists && parser.manifest.playlists.length && parser.manifest.playlists.length == 1) {
-              let uri = parser.manifest.playlists[0].uri;
-              if (!uri.startsWith('http')) {
-                hlsSrc = uri[0] == '/' ? (hlsSrc.substr(0, hlsSrc.indexOf('/', 10)) + uri) :
-                  (hlsSrc.replace(/\/[^\/]*((\?.*)|$)/, '/') + uri);
+      let info = '解析资源失败！';
+      let code = -1;
+      let parser = new Parser();
+      if (/^file:\/\/\//g.test(hlsSrc)) {
+        parser.push(fs.readFileSync(hlsSrc.replace(/^file:\/\/\//g, '')));
+        parser.end();
+      } else {
+        for (let index = 0; index < 3; index++) {
+          let response = await got(hlsSrc, {
+            headers: _headers,
+            timeout: httpTimeout,
+            agent: proxy_agent
+          }).catch(logger.error); {
+            if (response && response.body != null &&
+              response.body != '') {
+              parser.push(response.body);
+              parser.end();
+              if (
+                parser.manifest.segments.length == 0 &&
+                parser.manifest.playlists &&
+                parser.manifest.playlists.length &&
+                parser.manifest.playlists.length == 1
+              ) {
+                let uri = parser.manifest.playlists[0].uri;
+                if (!uri.startsWith('http')) {
+                  hlsSrc = uri[0] == '/' ? (hlsSrc.substr(0, hlsSrc.indexOf('/', 10)) + uri) :
+                    (hlsSrc.replace(/\/[^\/]*((\?.*)|$)/, '/') + uri);
+                }
+                else {
+                  hlsSrc = uri;
+                }
+                object1.url = hlsSrc;
+                parser = new Parser();
+                continue;
               }
-              else {
-                hlsSrc = uri;
-              }
-              object1.url = hlsSrc;
-              parser = new Parser();
-              continue;
+              break;
             }
-            break;
           }
         }
       }
-    }
-    let count_seg = parser.manifest.segments.length;
-    if (count_seg > 0) {
-      code = 0;
-      if (parser.manifest.endList) {
-        let duration = 0;
-        parser.manifest.segments.forEach(segment => {
-          duration += segment.duration;
-        });
-        info = `点播资源解析成功，有 ${count_seg} 个片段，时长: ${formatTime(duration)}，即将开始缓存...`;
-        startDownload(object1, undefined);
-      } else {
-        info = `直播资源解析成功，即将开始缓存...`;
-        startDownloadLive(object1);
+      let count_seg = parser.manifest.segments.length;
+      if (count_seg > 0) {
+        code = 0;
+        if (parser.manifest.endList) {
+          let duration = 0;
+          parser.manifest.segments.forEach(segment => {
+            duration += segment.duration;
+          });
+          info = `点播资源解析成功，有 ${count_seg} 个片段，时长: ${formatTime(duration)}，即将开始缓存...`;
+          this.downloadTask = object1
+          // return this.startDownload(object1, undefined);
+        } else {
+          info = `直播资源解析成功，即将开始缓存...`;
+          startDownloadLive(object1);
+        }
+      } else if (
+        parser.manifest.playlists &&
+        parser.manifest.playlists.length &&
+        parser.manifest.playlists.length >= 1
+      ) {
+        resolve({
+          code: 1,
+          message: '',
+          playlists: parser.manifest.playlists
+        })
+        return;
       }
-    } else if (parser.manifest.playlists && parser.manifest.playlists.length && parser.manifest.playlists.length >= 1) {
-      code = 1;
-      this.taskAddReply({
-        code: code,
-        message: '',
-        playlists: parser.manifest.playlists
-      })
-      return;
-    }
-    this.taskAddReply({
-      code: code,
-      message: info
-    });
+      const data = {
+        code,
+        message: info
+      }
+      if (code != -1) {
+        resolve(data)
+      } else {
+        reject(data);
+      }
+    })
   }
   taskAddReply(data) {
     if (data.code != 1) {
@@ -270,202 +295,203 @@ class NewTask {
     this.playlistUri = this.playlists[0].uri;
     this.addTaskMessage = "请选择一种画质";
   }
-}
+  startDownload(object, iidx) {
+    return new Promise(async (resolve, reject) => {
 
-async function startDownload(object, iidx) {
-  logger.info(object)
-  logger.info(iidx)
-  let id = !object.id ? (iidx != null ? (new Date().getTime() + iidx) : new Date().getTime()) : object.id;
-  let headers = object.headers;
-  let url_prefix = object.url_prefix;
-  let taskName = object.taskName;
-  let myKeyIV = object.myKeyIV;
-  let url = object.url;
-  let taskIsDelTs = object.taskIsDelTs;
-  if (!taskName) {
-    taskName = `${id}`;
-  }
-  let dir = path.join(pathDownloadDir, taskName.replace(/["“”，\.。\|\/\\ \*:;\?<>]/g, ""));
-  logger.info(dir);
-  !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
-  let parser = new Parser();
-  if (/^file:\/\/\//g.test(url)) {
-    parser.push(fs.readFileSync(url.replace(/^file:\/\/\//, ''), { encoding: 'utf-8' }));
-    parser.end();
-  } else {
-    for (let index = 0; index < 3; index++) {
-      let response = await got(url, {
-        headers: headers,
-        timeout: httpTimeout,
-        agent: proxy_agent
-      }).catch(logger.error); {
-        if (response && response.body != null &&
-          response.body != '') {
-          parser.push(response.body);
-          parser.end();
-          if (parser.manifest.segments.length == 0 && parser.manifest.playlists && parser.manifest.playlists.length && parser.manifest.playlists.length >= 1) {
-            let uri = parser.manifest.playlists[0].uri;
-            if (!uri.startsWith('http')) {
-              url = uri[0] == '/' ? (url.substr(0, url.indexOf('/', 10)) + uri) :
-                (url.replace(/\/[^\/]*((\?.*)|$)/, '/') + uri);
-            }
-            else {
-              url = uri;
-            }
-            parser = new Parser();
-            continue;
-          }
-          break;
-        }
+      logger.info(object)
+      logger.info(iidx)
+      let id = object.id || (iidx && (new Date().getTime() + iidx) || new Date().getTime())
+      let {
+        headers,
+        url_prefix,
+        taskName,
+        myKeyIV,
+        url,
+        taskIsDelTs
+      } = object
+
+      if (!taskName) {
+        taskName = `${id}`;
       }
-    }
-  }
-
-  //并发 2 个线程下载
-  var tsQueues = async.queue(queue_callback, 5);
-  let count_seg = parser.manifest.segments.length;
-  let count_downloaded = 0;
-  var video = {
-    id: id,
-    url: url,
-    url_prefix: url_prefix,
-    dir: dir,
-    segment_total: count_seg,
-    segment_downloaded: count_downloaded,
-    time: dateFormat(new Date(), "yyyy-mm-dd HH:MM:ss"),
-    status: '初始化...',
-    isLiving: false,
-    headers: headers,
-    taskName: taskName,
-    myKeyIV: myKeyIV,
-    taskIsDelTs: taskIsDelTs,
-    success: true,
-    videopath: ''
-  };
-  videoDatas.splice(0, 0, video);
-  fs.writeFileSync(pathVideoDB, JSON.stringify(videoDatas));
-  if (!object.id) {
-    taskNotifyCreate(video)
-  }
-  globalCond[id] = true;
-  let segments = parser.manifest.segments;
-  for (let iSeg = 0; iSeg < segments.length; iSeg++) {
-    let qo = new QueueObject();
-    qo.dir = dir;
-    qo.idx = iSeg;
-    qo.id = id;
-    qo.url = url;
-    qo.url_prefix = url_prefix;
-    qo.headers = headers;
-    qo.myKeyIV = myKeyIV;
-    qo.segment = segments[iSeg];
-    qo.then = function () {
-      count_downloaded = count_downloaded + 1
-      video.segment_downloaded = count_downloaded;
-      video.status = `下载中...${count_downloaded}/${count_seg}`
-      if (video.success) {
-
-        taskNotifyUpdate(video)
-      }
-    };
-    qo.catch = function () {
-      if (this.retry < 5) {
-        tsQueues.push(this);
+      let dir = path.join(pathDownloadDir, taskName.replace(/["“”，\.。\|\/\\ \*:;\?<>]/g, ""));
+      logger.info(dir);
+      !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
+      let parser = new Parser();
+      if (/^file:\/\/\//g.test(url)) {
+        parser.push(fs.readFileSync(url.replace(/^file:\/\/\//, ''), { encoding: 'utf-8' }));
+        parser.end();
       } else {
-        globalCond[id] = false;
-        video.success = false;
-        logger.info(`URL:${video.url} | ${this.segment.uri} download failed`);
-        video.status = "多次尝试，下载片段失败";
-        taskNotifyEnd(video)
-        fs.writeFileSync(pathVideoDB, JSON.stringify(videoDatas));
-      }
-    }
-    tsQueues.push(qo);
-  }
-  tsQueues.drain(async () => {
-    if (!video.success) {
-      return;
-    }
-    logger.info('download success');
-    video.status = "已完成，合并中...";
-    taskNotifyEnd(video)
-    let fileSegments = [];
-    for (let iSeg = 0; iSeg < segments.length; iSeg++) {
-      let filpath = path.join(dir, `${((iSeg + 1) + '').padStart(6, '0')}.ts`);
-      if (fs.existsSync(filpath)) {
-        fileSegments.push(filpath);
-      }
-    }
-    if (!fileSegments.length) {
-      video.status = "下载失败，请检查链接有效性";
-      taskNotifyEnd(video)
-      logger.error(`[${url}] 下载失败，请检查链接有效性`);
-      return;
-    }
-    let outPathMP4 = path.join(dir, Date.now() + ".mp4");
-    let outPathMP4_ = path.join(pathDownloadDir, taskName.replace(/["“”，\.。\|\/\\ \*:;\?<>]/g, "") + '.mp4');
-    if (fs.existsSync(ffmpegPath)) {
-      let ffmpegInputStream = new FFmpegStreamReadable(null);
-      new ffmpeg(ffmpegInputStream)
-        .setFfmpegPath(ffmpegPath)
-        .videoCodec('copy')
-        .audioCodec('copy')
-        .format('mp4')
-        .save(outPathMP4)
-        // .saveToFile(outPathMP4)
-        .on('error', (error) => {
-          logger.error(error)
-          video.videopath = "";
-          video.status = "合并出错，请尝试手动合并";
-          taskNotifyEnd(video)
-          fs.writeFileSync(pathVideoDB, JSON.stringify(videoDatas));
-        })
-        .on('end', function () {
-          console.log('on end')
-          logger.info(`${outPathMP4} merge finished.`)
-          video.videopath = "";
-          fs.existsSync(outPathMP4) && (fs.renameSync(outPathMP4, outPathMP4_), video.videopath = outPathMP4_);
-          video.status = "已完成"
-          taskNotifyEnd(video)
-          if (video.taskIsDelTs) {
-            let index_path = path.join(dir, 'index.txt');
-            fs.existsSync(index_path) && fs.unlinkSync(index_path);
-            fileSegments.forEach(item => fs.existsSync(item) && fs.unlinkSync(item));
-            fs.rmdirSync(dir);
+        for (let index = 0; index < 3; index++) {
+          let response = await got(url, {
+            headers,
+            timeout: httpTimeout,
+            agent: proxy_agent
+          }).catch(logger.error); {
+            if (response && response.body != null &&
+              response.body != '') {
+              parser.push(response.body);
+              parser.end();
+              if (
+                parser.manifest.segments.length == 0 &&
+                parser.manifest.playlists &&
+                parser.manifest.playlists.length &&
+                parser.manifest.playlists.length >= 1
+              ) {
+                let uri = parser.manifest.playlists[0].uri;
+                if (!uri.startsWith('http')) {
+                  url = uri[0] == '/' ? (url.substr(0, url.indexOf('/', 10)) + uri) :
+                    (url.replace(/\/[^\/]*((\?.*)|$)/, '/') + uri);
+                }
+                else {
+                  url = uri;
+                }
+                parser = new Parser();
+                continue;
+              }
+              break;
+            }
           }
-          fs.writeFileSync(pathVideoDB, JSON.stringify(videoDatas));
-        })
-        .on('progress', (info) => {
-          console.log('on progressing')
-          logger.info(JSON.stringify(info));
-        });
-      console.log(fileSegments)
-      for (let i = 0; i < fileSegments.length; i++) {
-        let percent = Math.ceil((i + 1) * 100 / fileSegments.length);
-        video.status = `合并中[${percent}%]`;
-        taskNotifyEnd(video)
-        let filePath = fileSegments[i];
-        console.log(filePath)
-        fs.existsSync(filePath) && ffmpegInputStream.push(fs.readFileSync(filePath));
-        console.log('before while', ffmpegInputStream)
-        while (ffmpegInputStream._readableState.length > 0) {
-          // console.log('in while',ffmpegInputStream)
-          await sleep(100);
         }
-        console.log("push " + percent);
       }
-      console.log("push(null) end");
-      ffmpegInputStream.push(null);
-    } else {
-      console.log('已完成，未发现本地FFMPEG，不进行合成。')
-      video.videopath = outPathMP4;
-      video.status = "已完成，未发现本地FFMPEG，不进行合成。"
-      taskNotifyEnd(video)
-    }
-  });
+
+      //并发 2 个线程下载
+      var tsQueues = async.queue(queue_callback, 5);
+      let count_seg = parser.manifest.segments.length;
+      let count_downloaded = 0;
+      var video: Video = {
+        id,
+        url,
+        url_prefix,
+        dir,
+        segment_total: count_seg,
+        segment_downloaded: count_downloaded,
+        time: dateFormat(new Date(), "yyyy-mm-dd HH:MM:ss"),
+        status: '初始化...',
+        isLiving: false,
+        headers,
+        taskName,
+        myKeyIV,
+        taskIsDelTs,
+        success: true,
+        videopath: ''
+      };
+      if (!object.id) {
+        taskNotifyCreate(video)
+      }
+      globalCond[id] = true;
+      let segments = parser.manifest.segments;
+      for (let iSeg = 0; iSeg < segments.length; iSeg++) {
+        let qo = new QueueObject(
+          {
+            dir,
+            idx: iSeg,
+            id,
+            url,
+            url_prefix,
+            headers,
+            myKeyIV,
+            segment: segments[iSeg],
+            then: function () {
+              count_downloaded += 1
+              video.segment_downloaded = count_downloaded;
+              video.status = `下载中...${count_downloaded}/${count_seg}`
+              if (video.success) {
+                taskNotifyUpdate(video)
+              }
+            },
+            catchFn: function () {
+              if (this.retry < 5) {
+                tsQueues.push(this);
+              } else {
+                globalCond[id] = false;
+                video.success = false;
+                logger.info(`URL:${video.url} | ${this.segment.uri} download failed`);
+                video.status = "多次尝试，下载片段失败";
+                taskNotifyEnd(video)
+              }
+            }
+          }
+        );
+        tsQueues.push(qo);
+      }
+      tsQueues.drain(async () => {
+        if (!video.success) {
+          reject()
+          return;
+        }
+        logger.info('download success');
+        resolve({})
+        video.status = "已完成，合并中...";
+        taskNotifyEnd(video)
+        let fileSegments = [];
+        for (let iSeg = 0; iSeg < segments.length; iSeg++) {
+          let filpath = path.join(dir, `${((iSeg + 1) + '').padStart(6, '0')}.ts`);
+          if (fs.existsSync(filpath)) {
+            fileSegments.push(filpath);
+          }
+        }
+        if (!fileSegments.length) {
+          video.status = "下载失败，请检查链接有效性";
+          taskNotifyEnd(video)
+          logger.error(`[${url}] 下载失败，请检查链接有效性`);
+          return;
+        }
+        let outPathMP4 = path.join(dir, Date.now() + ".mp4");
+        let outPathMP4_ = path.join(pathDownloadDir, taskName.replace(/["“”，\.。\|\/\\ \*:;\?<>]/g, "") + '.mp4');
+        if (fs.existsSync(ffmpegPath)) {
+          let ffmpegInputStream = new FFmpegStreamReadable(null);
+          new ffmpeg(ffmpegInputStream)
+            .setFfmpegPath(ffmpegPath)
+            .videoCodec('copy')
+            .audioCodec('copy')
+            .format('mp4')
+            .save(outPathMP4)
+            .on('error', (error) => {
+              logger.error(error)
+              video.videopath = "";
+              video.status = "合并出错，请尝试手动合并";
+              reject()
+              taskNotifyEnd(video)
+            })
+            .on('end', function () {
+              logger.info(`${outPathMP4} merge finished.`)
+              video.videopath = "";
+              fs.existsSync(outPathMP4) && (fs.renameSync(outPathMP4, outPathMP4_), video.videopath = outPathMP4_);
+              video.status = "已完成"
+              taskNotifyEnd(video)
+              if (video.taskIsDelTs) {
+                let index_path = path.join(dir, 'index.txt');
+                fs.existsSync(index_path) && fs.unlinkSync(index_path);
+                fileSegments.forEach(item => fs.existsSync(item) && fs.unlinkSync(item));
+                fs.rmdirSync(dir);
+              }
+            })
+            .on('progress', (info) => {
+              logger.info(JSON.stringify(info));
+            });
+          for (let i = 0; i < fileSegments.length; i++) {
+            let percent = Math.ceil((i + 1) * 100 / fileSegments.length);
+            video.status = `合并中[${percent}%]`;
+            taskNotifyEnd(video)
+            let filePath = fileSegments[i];
+            fs.existsSync(filePath) && ffmpegInputStream.push(fs.readFileSync(filePath));
+            while (ffmpegInputStream._readableState.length > 0) {
+              await sleep(100);
+            }
+          }
+          ffmpegInputStream.push(null);
+        } else {
+          video.videopath = outPathMP4;
+          video.status = "已完成，未发现本地FFMPEG，不进行合成。"
+          taskNotifyEnd(video)
+        }
+      });
+    })
+  }
 }
+
 async function startDownloadLive(object) {
-  let id = !object.id ? new Date().getTime() : object.id;
+  let id = object.id || new Date().getTime();
   let headers = object.headers;
   let taskName = object.taskName;
   let myKeyIV = object.myKeyIV;
@@ -482,7 +508,7 @@ async function startDownloadLive(object) {
   }
   let count_downloaded = 0;
   let count_seg = 100;
-  var video = {
+  var video: Video = {
     id: id,
     url: url,
     dir: dir,
@@ -494,10 +520,11 @@ async function startDownloadLive(object) {
     myKeyIV: myKeyIV,
     taskName: taskName,
     headers: headers,
-    videopath: ''
+    videopath: '',
+    // url_prefix: '',
+    // taskIsDelTs: false,
+    // success: false,
   };
-  videoDatas.splice(0, 0, video);
-  fs.writeFileSync(pathVideoDB, JSON.stringify(videoDatas));
   if (!object.id) {
     taskNotifyCreate(video)
   }
@@ -597,7 +624,6 @@ async function startDownloadLive(object) {
                       video.videopath = outPathMP4;
                       video.status = "已完成";
                       taskNotifyEnd(video)
-                      fs.writeFileSync(pathVideoDB, JSON.stringify(videoDatas));
                     })
                     .on('progress', logger.info);
                 } else {
@@ -647,7 +673,7 @@ async function startDownloadLive(object) {
     return;
   }
 }
-interface MergeTaskI {
+type MergeTaskI = {
   name: string,
   ts_files: Array<string>,
   mergeType: string
@@ -742,17 +768,30 @@ class QueueObject {
   then: () => void;
   catch: () => void;
   retry: number;
-  constructor() {
-    this.segment = null;
-    this.url = '';
-    this.url_prefix = '';
-    this.headers = '';
-    this.myKeyIV = '';
-    this.id = 0;
-    this.idx = 0;
-    this.dir = '';
-    this.then = this.catch = null;
-    this.retry = 0;
+  constructor({
+    segment = null,
+    url = '',
+    url_prefix = '',
+    headers = '',
+    myKeyIV = '',
+    id = 0,
+    idx = 0,
+    dir = '',
+    then = null,
+    catchFn = null,
+    retry = 0
+  }) {
+    this.segment = segment;
+    this.url = url;
+    this.url_prefix = url_prefix;
+    this.headers = headers;
+    this.myKeyIV = myKeyIV;
+    this.id = id;
+    this.idx = idx;
+    this.dir = dir;
+    this.then = then
+    this.catch = catchFn;
+    this.retry = retry;
   }
   async callback(_callback) {
     try {
@@ -904,7 +943,6 @@ class QueueObject {
               cipher.on('error', console.error);
               let inputData = fs.readFileSync(filpath_dl);
               let outputData = Buffer.concat([cipher.update(inputData), cipher.final()]);
-              console.log('decrypt');
               fs.writeFileSync(filpath, outputData);
               if (fs.existsSync(filpath_dl))
                 fs.unlinkSync(filpath_dl);
