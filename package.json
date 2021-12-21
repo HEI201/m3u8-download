@@ -1,8 +1,8 @@
 {
-  "name": "m3u8",
+  "name": "m3u8-downloader",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "watch-server": "nodemon --ignore tests/ --watch src -e ts,tsx --exec ts-node src/index.ts",
     "build": "tsc",
@@ -32,7 +32,6 @@
     "http": "0.0.0",
     "https": "^1.0.0",
     "m3u8-parser": "^4.7.0",
-    "mysql": "^2.18.1",
     "nconf": "^0.11.3",
     "queue": "^6.0.2",
     "url": "^0.11.0",
