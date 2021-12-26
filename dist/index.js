@@ -579,4 +579,3 @@ class QueueObject {
     }
 }
 exports.default = Task;
-//# sourceMappingURL=index.js.map
