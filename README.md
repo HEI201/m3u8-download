@@ -1,15 +1,15 @@
-### example
+# example
 
 ```js
 ;(async () => {
   import Task from "m3u8-downloader-sync"
-  const task = new Task({
+  const newTask = new Task({
     m3u8_url: "m3u8_url",
-    taskName: "the name to save file",
-    pathDownloadDir: "path to save the file",
+    taskName: "the name to save the file",
+    pathDownloadDir: "the path to save the file",
   })
-  await newTask.parseM3u8()
-  await newTask.startDownload()
+  await newTask.parseM3u8() // must await
+  await newTask.startDownload() // optional await
 })()
 ```
 
