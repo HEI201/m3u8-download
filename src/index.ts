@@ -161,7 +161,7 @@ class Task {
           task: this,
         }
       );
-      promises.push(segmentDownloadQueueWorker.downloadSeg());
+      promises.push(segmentDownloadQueueWorker.downloadSegment());
     }
     Promise.all(promises).then(async () => {
       // "已完成，合并中...";
@@ -189,14 +189,14 @@ class Task {
           .audioCodec('copy')
           .format('mp4')
           .save(outPathMP4)
-          .on('error', () => {
+          .on('error', (e) => {
             // "合并出错，请尝试手动合并";
+            console.log(e);
           })
           .on('end', function () {
             fs.existsSync(outPathMP4) && (fs.renameSync(outPathMP4, outPathMP4_));
             // "已完成";
-          })
-          .on('progress', () => { });
+          });
         for (let i = 0; i < fileSegments.length; i++) {
           // let percent = Math.ceil((i + 1) * 100 / fileSegments.length);
           // `合并中[${percent}%]`;

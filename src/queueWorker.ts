@@ -22,7 +22,7 @@ export default class QueueWorker {
         this.task = task;
         this.idx = idx;
     }
-    async downloadSeg() {
+    async downloadSegment() {
         let partent_uri = this.task.url.replace(/([^\/]*\?.*$)|([^\/]*$)/g, '');
         let segment = this.segment;
         let uri_ts = '';
