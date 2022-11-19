@@ -2,7 +2,7 @@ import { Parser } from 'm3u8-parser';
 import type { Headers } from 'got';
 declare class Task {
     taskName: string;
-    url: string;
+    m3u8_url: string;
     headers: Headers;
     parser: Parser;
     videoToBeSavedDir: string;
@@ -13,6 +13,6 @@ declare class Task {
         pathDownloadDir?: string;
     });
     parseM3u8(): Promise<void>;
-    startDownload(): Promise<void>;
+    download(): Promise<void>;
 }
 export default Task;
