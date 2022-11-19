@@ -66,67 +66,63 @@ const patchHeaders = (url: string) => {
 };
 class Task {
   taskName: string;
-  url: string;
+  m3u8_url: string;
   headers: Headers;
   parser: Parser;
   videoToBeSavedDir = '';
-  pathDownloadDir = defaultPathDownloadDir;
+  pathDownloadDir = '';
   constructor({
     taskName = '',
     m3u8_url = '',
-    pathDownloadDir = '',
+    pathDownloadDir = defaultPathDownloadDir,
   }: {
     taskName?: string,
     m3u8_url?: string,
     pathDownloadDir?: string,
   }) {
     if (!m3u8_url) {
-      throw new Error('请输入正确的M3U8-URL或者导入(.m3u8)文件');
+      throw new Error('请输入正确的M3U8-URL');
     }
+    this.m3u8_url = m3u8_url;
 
     if (!taskName) {
       taskName = new Date().getTime() + '';
     }
     this.taskName = taskName;
-    this.url = m3u8_url;
+
     this.pathDownloadDir = pathDownloadDir;
-    this.headers = patchHeaders(this.url);
+    this.headers = patchHeaders(this.m3u8_url);
   }
   async parseM3u8() {
-    let hlsSrc = this.url;
+    let hlsSrc = this.m3u8_url;
     let parser = new Parser();
 
-    if (/^file:\/\/\//g.test(hlsSrc)) {
-      parser.push(fs.readFileSync(hlsSrc.replace(/^file:\/\/\//g, ''), { encoding: 'utf-8' }));
-      parser.end();
-    } else {
-      for (let index = 0; index < 3; index++) {
-        let response = await got(hlsSrc, {
-          headers: this.headers,
-          timeout: httpTimeout,
-        });
+    for (let index = 0; index < 3; index++) {
+      let response = await got(hlsSrc, {
+        headers: this.headers,
+        timeout: httpTimeout,
+      });
 
-        if (response?.body) {
-          parser.push(response.body);
-          parser.end();
-          if (
-            parser.manifest.segments.length == 0 &&
-            parser.manifest?.playlists?.length >= 1
-          ) {
-            let uri = parser.manifest.playlists[0].uri;
-            if (!uri.startsWith('http')) {
-              hlsSrc = uri[0] == '/' ?
-                (hlsSrc.substr(0, hlsSrc.indexOf('/', 10)) + uri) :
-                (hlsSrc.replace(/\/[^\/]*((\?.*)|$)/, '/') + uri);
-            } else {
-              hlsSrc = uri;
-            }
-            this.url = hlsSrc;
-            parser = new Parser();
-            continue;
+      if (response?.body) {
+        parser.push(response.body);
+        parser.end();
+        if (
+          parser.manifest.segments.length == 0 &&
+          parser.manifest?.playlists?.length >= 1
+        ) {
+          let uri = parser.manifest.playlists[0].uri;
+          if (!uri.startsWith('http')) {
+            hlsSrc = uri[0] == '/' ?
+              (hlsSrc.substr(0, hlsSrc.indexOf('/', 10)) + uri) :
+              (hlsSrc.replace(/\/[^\/]*((\?.*)|$)/, '/') + uri);
+          } else {
+            hlsSrc = uri;
           }
-          break;
+          this.m3u8_url = hlsSrc;
+          parser = new Parser();
+          continue;
         }
+        break;
       }
     }
 
@@ -139,17 +135,16 @@ class Task {
         parser.manifest.segments.forEach((segment: any) => {
           duration += segment.duration;
         });
-        const msg = `点播资源解析成功，有 ${count_seg} 个片段，时长: ${formatDuration(duration)}，即将开始缓存...`;
+        const msg = `The resource has been parsed. There are ${count_seg} segments. duration: ${formatDuration(duration)}, start caching ...`;
         console.log(msg);
       }
     }
   }
 
-  async startDownload() {
+  async download() {
+    await this.parseM3u8();
     this.videoToBeSavedDir = path.join(this.pathDownloadDir, this.taskName.replace(/["“”，\.。\|\/\\ \*:;\?<>]/g, ""));
     !fs.existsSync(this.videoToBeSavedDir) && fs.mkdirSync(this.videoToBeSavedDir, { recursive: true });
-
-    // '初始化...',
 
     let segments = this.parser.manifest.segments;
     const promises: Promise<any>[] = [];
@@ -163,55 +158,54 @@ class Task {
       );
       promises.push(segmentDownloadQueueWorker.downloadSegment());
     }
-    Promise.all(promises).then(async () => {
-      // "已完成，合并中...";
-      let fileSegments: string[] = [];
-      for (let iSeg = 0; iSeg < segments.length; iSeg++) {
-        let filepath = path.join(this.videoToBeSavedDir, `${((iSeg + 1) + '').padStart(6, '0')}.ts`);
-        if (fs.existsSync(filepath)) {
-          fileSegments.push(filepath);
+    await Promise.all(promises);
+    // download done, starting to merge ts files
+    let fileSegments: string[] = [];
+    for (let iSeg = 0; iSeg < segments.length; iSeg++) {
+      let filepath = path.join(this.videoToBeSavedDir, `${((iSeg + 1) + '').padStart(6, '0')}.ts`);
+      if (fs.existsSync(filepath)) {
+        fileSegments.push(filepath);
+      }
+    }
+    if (!fileSegments.length) {
+      // download failed, please check the validity of the link
+      return;
+    }
+    let outPathMP4 = path.join(this.videoToBeSavedDir, Date.now() + ".mp4");
+    let outPathMP4_ = path.join(
+      this.pathDownloadDir,
+      this.taskName.replace(/["“”，\.。\|\/\\ \*:;\?<>]/g, "") + '.mp4'
+    );
+    if (fs.existsSync(ffmpegPath)) {
+      let ffmpegInputStream = new FFmpegStreamReadable(null);
+      ffmpeg(ffmpegInputStream)
+        .setFfmpegPath(ffmpegPath)
+        .videoCodec('copy')
+        .audioCodec('copy')
+        .format('mp4')
+        .save(outPathMP4)
+        .on('error', (e) => {
+          // something went wrong while merging, try to merge manually
+          console.log(e);
+        })
+        .on('end', function () {
+          fs.existsSync(outPathMP4) && (fs.renameSync(outPathMP4, outPathMP4_));
+          // merge done          
+        });
+      for (let i = 0; i < fileSegments.length; i++) {
+        let percent = Math.ceil((i + 1) * 100 / fileSegments.length);
+        console.log(`merging ... [${percent}%]`);
+        let filePath = fileSegments[i];
+        fs.existsSync(filePath) && ffmpegInputStream.push(fs.readFileSync(filePath));
+        // @ts-ignore
+        while (ffmpegInputStream._readableState.length > 0) {
+          await sleep(100);
         }
       }
-      if (!fileSegments.length) {
-        // "下载失败，请检查链接有效性";
-        return;
-      }
-      let outPathMP4 = path.join(this.videoToBeSavedDir, Date.now() + ".mp4");
-      let outPathMP4_ = path.join(
-        this.pathDownloadDir,
-        this.taskName.replace(/["“”，\.。\|\/\\ \*:;\?<>]/g, "") + '.mp4'
-      );
-      if (fs.existsSync(ffmpegPath)) {
-        let ffmpegInputStream = new FFmpegStreamReadable(null);
-        ffmpeg(ffmpegInputStream)
-          .setFfmpegPath(ffmpegPath)
-          .videoCodec('copy')
-          .audioCodec('copy')
-          .format('mp4')
-          .save(outPathMP4)
-          .on('error', (e) => {
-            // "合并出错，请尝试手动合并";
-            console.log(e);
-          })
-          .on('end', function () {
-            fs.existsSync(outPathMP4) && (fs.renameSync(outPathMP4, outPathMP4_));
-            // "已完成";
-          });
-        for (let i = 0; i < fileSegments.length; i++) {
-          // let percent = Math.ceil((i + 1) * 100 / fileSegments.length);
-          // `合并中[${percent}%]`;
-          let filePath = fileSegments[i];
-          fs.existsSync(filePath) && ffmpegInputStream.push(fs.readFileSync(filePath));
-          // @ts-ignore
-          while (ffmpegInputStream._readableState.length > 0) {
-            await sleep(100);
-          }
-        }
-        ffmpegInputStream.push(null);
-      } else {
-        // "已完成，未发现本地FFMPEG，不进行合成。";
-      }
-    });
+      ffmpegInputStream.push(null);
+    } else {
+      // download done, no local FFMPEG found, do not merge
+    }
   }
 }
 

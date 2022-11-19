@@ -1,6 +1,10 @@
 
 # CHANGE LOG
 
+## 2.0.0
+
+- make api easier to use
+
 ## 1.0.6
 
 - remove some files from the package

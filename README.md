@@ -7,8 +7,7 @@
     m3u8_url: "m3u8_url",
     taskName: "the name to save the file",
   })
-  await newTask.parseM3u8() // must await
-  await newTask.startDownload() // optional await
+  await newTask.download() // optional await
 })()
 ```
 

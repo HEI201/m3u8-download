@@ -1,12 +1,12 @@
 {
   "name": "m3u8-downloader-sync",
-  "version": "1.0.6",
+  "version": "2.0.0",
+  "description": "a package for downloading m3u8 video",
   "keywords": [
     "m3u8",
     "downloader",
     "sync"
   ],
-  "description": "a package for downloading m3u8 video",
   "main": "dist/index.js",
   "scripts": {
     "watch-server": "nodemon --ignore tests/ --watch src -e ts,tsx --exec ts-node src/index.ts",
@@ -14,6 +14,10 @@
     "test": "node ./dist/test/downloadTest.js"
   },
   "author": "Jackie Leung",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HEI201/m3u8-download"
+  },
   "license": "ISC",
   "devDependencies": {
     "@types/download": "^8.0.1",
