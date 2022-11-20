@@ -1,4 +1,4 @@
-import Task from '../src';
+import M3u8Downloader from '../src';
 
 
 (async () => {
@@ -7,7 +7,7 @@ import Task from '../src';
     ];
     for (let index = 0; index < list.length; index++) {
         const url = list[index];
-        let newTask = new Task({
+        let newTask = new M3u8Downloader({
             m3u8_url: url,
             taskName: 'taskName' + index,
         });

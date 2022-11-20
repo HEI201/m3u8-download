@@ -2,9 +2,9 @@
 
 ```js
 ;(async () => {
-  import Task from "m3u8-downloader-sync"
-  const newTask = new Task({
-    m3u8_url: "m3u8_url",
+  import M3u8Downloader from "m3u8-downloader-sync"
+  const newTask = new M3u8Downloader({
+    m3u8_url: "m3u8_url like https://xxx.com/xxx.m3u8**",
     taskName: "the name to save the file",
   })
   await newTask.download() // optional await
