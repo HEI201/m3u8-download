@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import download from "download";
 import crypto from 'crypto';
-import M3u8Downloader from './m3u8Downloader';
+import M3u8Downloader from '.';
 
 const aes_file_name = 'aes.key';
 

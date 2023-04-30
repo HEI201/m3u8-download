@@ -1,6 +1,6 @@
 {
   "name": "m3u8-downloader-sync",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "a package for downloading m3u8 video",
   "keywords": [
     "m3u8",
@@ -11,7 +11,8 @@
   "scripts": {
     "watch-server": "nodemon --ignore tests/ --watch src -e ts,tsx --exec ts-node src/index.ts",
     "build": "rimraf ./dist && tsc",
-    "test": "node ./dist/test/downloadTest.js"
+    "test": "node ./dist/test/downloadTest.js",
+    "dev-test": "ts-node ./test/downloadTest.ts"
   },
   "author": "Jackie Leung",
   "repository": {
