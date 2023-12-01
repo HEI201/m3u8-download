@@ -7,11 +7,11 @@ import type { Headers } from 'got';
 import got from 'got';
 import { Parser } from 'm3u8-parser';
 
-import { DefaultPathDownloadPath, HttpTimeout } from './config';
-import { formatDuration, patchHeaders, sleep } from "./utils";
+import { DefaultPathDownloadPath, HttpTimeout, WebsiteVideoFolder } from './config';
+import { formatDuration, getSegmentFilename, patchHeaders, sleep } from "./utils";
 
 import sanitize from "sanitize-filename";
-import FFmpegStreamReadable from "./fFmpegStreamReadable";
+import FFmpegStreamReadable from "./FFmpegStreamReadable";
 import SegmentDownloader from "./segmentDownloader";
 
 const ffmpegPath = ffmpegStatic.replace(/app.asar[\/\\]{1,2}/g, '');
@@ -127,6 +127,26 @@ export default class M3u8Downloader {
 
     }
 
+    generateM3u8() {
+        const segments = this.parser.manifest.segments;
+        let m3u8 = '';
+        m3u8 += '#EXTM3U\n';
+        m3u8 += '#EXT-X-VERSION:3\n';
+        m3u8 += '#EXT-X-TARGETDURATION:' + segments[0].duration + '\n';
+        m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
+        const videoFolder = path.basename(this.videoSavedPath);
+        segments.forEach((segment: any, index: number) => {
+            m3u8 += '#EXTINF:' + segment.duration + ',\n';
+            m3u8 += path.join(
+                WebsiteVideoFolder,
+                videoFolder,
+                getSegmentFilename(index)
+            ) + '\n';
+        });
+        m3u8 += '#EXT-X-ENDLIST\n';
+        return m3u8;
+    }
+
     async download() {
         await this.parseM3u8();
 
@@ -154,6 +174,11 @@ export default class M3u8Downloader {
 
         console.log('download segments done');
 
+        // generate m3u8 file
+        const m3u8 = this.generateM3u8();
+        const m3u8Path = path.join(this.videoSavedPath, 'index.m3u8');
+        fs.writeFileSync(m3u8Path, m3u8);
+
         if (!this.merge) {
             return;
         }
@@ -163,7 +188,7 @@ export default class M3u8Downloader {
         for (let i = 0; i < segments.length; i++) {
             let filepath = path.join(
                 this.videoSavedPath,
-                `${((i + 1) + '').padStart(6, '0')}.ts`
+                getSegmentFilename(i)
             );
             if (fs.existsSync(filepath)) {
                 fileSegments.push(filepath);

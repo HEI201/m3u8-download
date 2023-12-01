@@ -39,3 +39,7 @@ export const patchHeaders = (url: string) => {
     }
     return _headers;
 };
+
+export const getSegmentFilename = (idx: number) => {
+    return `${(idx + '').padStart(6, '0')}.ts`;
+}

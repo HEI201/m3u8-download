@@ -1,5 +1,7 @@
 export const DefaultPathDownloadPath = 'D:\\Video\\m3u8';
 
+export const WebsiteVideoFolder = 'videos';
+
 export const HttpTimeout = {
     socket: 30000,
     request: 30000,

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import download from "download";
 import fs from 'fs';
 import path from 'path';
+import { getSegmentFilename } from "./utils";
 
 const aes_file_name = 'aes.key';
 
@@ -81,7 +82,7 @@ export default class SegmentDownloader {
     async download() {
         const segment = this.segment;
         const ts_url = this.getTsUrl(segment.uri);
-        const filename = `${((this.idx + 1) + '').padStart(6, '0')}.ts`;
+        const filename = getSegmentFilename(this.idx);
         const filename_dl = filename + '.dl';
         const filepath = path.join(this.videoSavedPath, filename);
         const filepath_dl = path.join(this.videoSavedPath, filename_dl);
@@ -131,7 +132,7 @@ export default class SegmentDownloader {
 
             if (fs.existsSync(aes_path)) {
 
-                let canReturn = true
+                let canReturn = true;
                 // standardly decrypt ts stream
                 try {
                     let key_ = null;
@@ -155,7 +156,7 @@ export default class SegmentDownloader {
 
                 } catch (error) {
                     console.error(error);
-                    canReturn = false
+                    canReturn = false;
                 }
 
                 if (fs.existsSync(filepath_dl)) {
