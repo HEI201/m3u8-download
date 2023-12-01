@@ -1,6 +1,10 @@
 
 # CHANGE LOG
 
+## 3.0.0
+
+- breaking change: change some parameter name
+
 ## 2.0.0
 
 - make api easier to use

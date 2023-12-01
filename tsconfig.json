@@ -68,6 +68,6 @@
     "src/**/*"
   ],
   "exclude": [
-    "tests"
+    // "tests"
   ]
 }

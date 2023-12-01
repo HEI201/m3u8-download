@@ -1,8 +1,9 @@
-import winston from "winston";
 import path from 'path';
+import winston from "winston";
+import { DefaultPathDownloadPath } from "../config";
 
-const logPath = '';
-
+const logPath = DefaultPathDownloadPath;
+const logFolder = 'm3u8';
 const logger = winston.createLogger({
     level: 'debug',
     format: winston.format.combine(
@@ -14,11 +15,11 @@ const logger = winston.createLogger({
     transports: [
         new winston.transports.Console(),
         new winston.transports.File({
-            filename: path.join(logPath, 'logs/error.log'),
+            filename: path.join(logPath, logFolder, 'logs/error.log'),
             level: 'error'
         }),
         new winston.transports.File({
-            filename: path.join(logPath, 'logs/all.log')
+            filename: path.join(logPath, logFolder, 'logs/all.log')
         }),
     ],
 });

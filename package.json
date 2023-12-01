@@ -1,6 +1,6 @@
 {
-  "name": "m3u8-downloader-sync",
-  "version": "2.0.2",
+  "name": "@lhw/m3u8-downloader",
+  "version": "3.0.0",
   "description": "a package for downloading m3u8 video",
   "keywords": [
     "m3u8",
@@ -9,7 +9,6 @@
   ],
   "main": "dist/index.js",
   "scripts": {
-    "watch-server": "nodemon --ignore tests/ --watch src -e ts,tsx --exec ts-node src/index.ts",
     "build": "rimraf ./dist && tsc",
     "test": "node ./dist/test/downloadTest.js",
     "dev-test": "ts-node ./test/downloadTest.ts"
@@ -37,6 +36,7 @@
     "got": "^11.8.2",
     "hpagent": "^0.1.2",
     "m3u8-parser": "^4.7.0",
+    "sanitize-filename": "^1.6.3",
     "winston": "^3.3.3"
   }
 }
