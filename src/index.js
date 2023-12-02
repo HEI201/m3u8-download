@@ -3,16 +3,15 @@ import path from 'path';
 
 import ffmpegStatic from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
-import type { Headers } from 'got';
 import got from 'got';
 import { Parser } from 'm3u8-parser';
 
-import { DefaultPathDownloadPath, HttpTimeout } from './config';
-import { formatDuration, getSegmentFilename, patchHeaders, sleep } from "./utils";
+import { DefaultPathDownloadPath, HttpTimeout } from './config.js';
+import { formatDuration, getSegmentFilename, patchHeaders, sleep } from "./utils/index.js";
 
 import sanitize from "sanitize-filename";
-import FFmpegStreamReadable from "./FFmpegStreamReadable";
-import SegmentDownloader from "./segmentDownloader";
+import FFmpegStreamReadable from "./FFmpegStreamReadable.js";
+import SegmentDownloader from "./segmentDownloader.js";
 
 const ffmpegPath = ffmpegStatic.replace(/app.asar[\/\\]{1,2}/g, '');
 
@@ -27,22 +26,17 @@ const ffmpegPath = ffmpegStatic.replace(/app.asar[\/\\]{1,2}/g, '');
 //        audio.ts
 //        video.mp4
 
-type M3u8DownloaderOptions = {
-    taskName?: string,
-    m3u8_url: string,
-    savedPath?: string,
-    merge?: boolean,
-    m3u8TsPath?: string,
-};
+
 export default class M3u8Downloader {
-    taskName: string;
-    m3u8_url: string;
+    taskName;
+    m3u8_url;
     savedPath = '';
     merge = true;
     m3u8TsPath = '';
+    videoFolder = '';
 
-    headers: Headers;
-    parser: Parser;
+    headers;
+    parser;
     videoSavedPath = '';
 
     constructor({
@@ -51,7 +45,7 @@ export default class M3u8Downloader {
         savedPath = DefaultPathDownloadPath,
         merge = true,
         m3u8TsPath = '',
-    }: M3u8DownloaderOptions) {
+    }) {
         if (!m3u8_url) {
             throw new Error('请输入正确的M3U8-URL');
         }
@@ -66,6 +60,7 @@ export default class M3u8Downloader {
         this.savedPath = savedPath;
         this.m3u8TsPath = m3u8TsPath;
         this.headers = patchHeaders(this.m3u8_url);
+        this.videoFolder = sanitize(this.taskName);
     }
 
     async parseM3u8() {
@@ -119,7 +114,7 @@ export default class M3u8Downloader {
         let duration = 0;
         parser.manifest
             .segments
-            .forEach((segment: any) => {
+            .forEach((segment) => {
                 duration += segment.duration;
             });
         const msg = `
@@ -139,12 +134,11 @@ export default class M3u8Downloader {
         // @ts-ignore
         m3u8 += '#EXT-X-TARGETDURATION:' + segments[0]?.duration + '\n';
         m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
-        const videoFolder = path.basename(this.videoSavedPath);
-        segments.forEach((segment: any, index: number) => {
+        segments.forEach((segment, index) => {
             m3u8 += '#EXTINF:' + segment.duration + ',\n';
             m3u8 += path.join(
                 this.m3u8TsPath,
-                videoFolder,
+                this.videoFolder,
                 getSegmentFilename(index)
             ) + '\n';
         });
@@ -162,7 +156,7 @@ export default class M3u8Downloader {
         !fs.existsSync(this.videoSavedPath) && fs.mkdirSync(this.videoSavedPath, { recursive: true });
 
         let segments = this.parser.manifest.segments;
-        const promises: Promise<any>[] = [];
+        const promises = [];
         for (let i = 0; i < segments.length; i++) {
             const segmentDownloadWorker = new SegmentDownloader(
                 {
@@ -189,7 +183,7 @@ export default class M3u8Downloader {
         }
 
         // download done, starting to merge ts files
-        let fileSegments: string[] = [];
+        let fileSegments = [];
         for (let i = 0; i < segments.length; i++) {
             let filepath = path.join(
                 this.videoSavedPath,

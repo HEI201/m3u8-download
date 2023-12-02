@@ -1,7 +1,7 @@
-import { Readable, ReadableOptions } from "stream";
+import { Readable } from "stream";
 
 export default class FFmpegStreamReadable extends Readable {
-    constructor(opt: ReadableOptions) {
+    constructor(opt) {
         super(opt);
     }
     _read() { }

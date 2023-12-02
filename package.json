@@ -7,7 +7,8 @@
     "downloader",
     "sync"
   ],
-  "main": "dist/index.js",
+  "type": "module",
+  "main": "src/index.js",
   "scripts": {
     "build": "rimraf ./dist && tsc",
     "test": "node ./dist/test/downloadTest.js",
