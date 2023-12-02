@@ -12,13 +12,14 @@ const m3u8_parser_1 = require("m3u8-parser");
 const config_1 = require("./config");
 const utils_1 = require("./utils");
 const sanitize_filename_1 = __importDefault(require("sanitize-filename"));
-const fFmpegStreamReadable_1 = __importDefault(require("./fFmpegStreamReadable"));
+const FFmpegStreamReadable_1 = __importDefault(require("./FFmpegStreamReadable"));
 const segmentDownloader_1 = __importDefault(require("./segmentDownloader"));
 const ffmpegPath = ffmpeg_static_1.default.replace(/app.asar[\/\\]{1,2}/g, '');
 class M3u8Downloader {
-    constructor({ taskName = '', m3u8_url, savedPath = config_1.DefaultPathDownloadPath, merge = true, }) {
+    constructor({ taskName = '', m3u8_url, savedPath = config_1.DefaultPathDownloadPath, merge = true, m3u8TsPath = '', }) {
         this.savedPath = '';
         this.merge = true;
+        this.m3u8TsPath = '';
         this.videoSavedPath = '';
         if (!m3u8_url) {
             throw new Error('请输入正确的M3U8-URL');
@@ -30,6 +31,7 @@ class M3u8Downloader {
         this.taskName = taskName;
         this.m3u8_url = m3u8_url;
         this.savedPath = savedPath;
+        this.m3u8TsPath = m3u8TsPath;
         this.headers = (0, utils_1.patchHeaders)(this.m3u8_url);
     }
     async parseM3u8() {
@@ -48,7 +50,7 @@ class M3u8Downloader {
             parser.end();
             // if it is not the master playlist, then it is the media playlist
             if (parser.manifest.segments.length > 0 &&
-                ((_b = (_a = parser.manifest) === null || _a === void 0 ? void 0 : _a.playlists) === null || _b === void 0 ? void 0 : _b.length) == 0) {
+                !((_b = (_a = parser.manifest) === null || _a === void 0 ? void 0 : _a.playlists) === null || _b === void 0 ? void 0 : _b.length)) {
                 break;
             }
             // master playlist case, get the first media playlist, continue to parse
@@ -84,6 +86,23 @@ class M3u8Downloader {
         `;
         console.log(msg);
     }
+    generateM3u8() {
+        var _a;
+        const segments = this.parser.manifest.segments;
+        let m3u8 = '';
+        m3u8 += '#EXTM3U\n';
+        m3u8 += '#EXT-X-VERSION:3\n';
+        // @ts-ignore
+        m3u8 += '#EXT-X-TARGETDURATION:' + ((_a = segments[0]) === null || _a === void 0 ? void 0 : _a.duration) + '\n';
+        m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
+        const videoFolder = path_1.default.basename(this.videoSavedPath);
+        segments.forEach((segment, index) => {
+            m3u8 += '#EXTINF:' + segment.duration + ',\n';
+            m3u8 += path_1.default.join(this.m3u8TsPath, videoFolder, (0, utils_1.getSegmentFilename)(index)) + '\n';
+        });
+        m3u8 += '#EXT-X-ENDLIST\n';
+        return m3u8;
+    }
     async download() {
         await this.parseM3u8();
         this.videoSavedPath = path_1.default.join(this.savedPath, (0, sanitize_filename_1.default)(this.taskName));
@@ -101,13 +120,18 @@ class M3u8Downloader {
             promises.push(segmentDownloadWorker.download());
         }
         await Promise.all(promises);
+        console.log('download segments done');
+        // generate m3u8 file
+        const m3u8 = this.generateM3u8();
+        const m3u8Path = path_1.default.join(this.videoSavedPath, 'index.m3u8');
+        fs_1.default.writeFileSync(m3u8Path, m3u8);
         if (!this.merge) {
             return;
         }
         // download done, starting to merge ts files
         let fileSegments = [];
         for (let i = 0; i < segments.length; i++) {
-            let filepath = path_1.default.join(this.videoSavedPath, `${((i + 1) + '').padStart(6, '0')}.ts`);
+            let filepath = path_1.default.join(this.videoSavedPath, (0, utils_1.getSegmentFilename)(i));
             if (fs_1.default.existsSync(filepath)) {
                 fileSegments.push(filepath);
             }
@@ -121,7 +145,7 @@ class M3u8Downloader {
         if (!fs_1.default.existsSync(ffmpegPath)) {
             return;
         }
-        let ffmpegInputStream = new fFmpegStreamReadable_1.default(null);
+        let ffmpegInputStream = new FFmpegStreamReadable_1.default(null);
         (0, fluent_ffmpeg_1.default)(ffmpegInputStream)
             .setFfmpegPath(ffmpegPath)
             .videoCodec('copy')

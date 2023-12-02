@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.patchHeaders = exports.sleep = exports.formatDuration = void 0;
+exports.getSegmentFilename = exports.patchHeaders = exports.sleep = exports.formatDuration = void 0;
 const formatDuration = (duration) => {
     let sec = Math.floor(duration % 60).toLocaleString();
     let min = Math.floor(duration / 60 % 60).toLocaleString();
@@ -42,3 +42,7 @@ const patchHeaders = (url) => {
     return _headers;
 };
 exports.patchHeaders = patchHeaders;
+const getSegmentFilename = (idx) => {
+    return `${(idx + '').padStart(6, '0')}.ts`;
+};
+exports.getSegmentFilename = getSegmentFilename;

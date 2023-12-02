@@ -7,6 +7,7 @@ const crypto_1 = __importDefault(require("crypto"));
 const download_1 = __importDefault(require("download"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
+const utils_1 = require("./utils");
 const aes_file_name = 'aes.key';
 class SegmentDownloader {
     constructor({ segment = null, idx = 0, m3u8_url, videoSavedPath, headers, }) {
@@ -64,7 +65,7 @@ class SegmentDownloader {
         var _a;
         const segment = this.segment;
         const ts_url = this.getTsUrl(segment.uri);
-        const filename = `${((this.idx + 1) + '').padStart(6, '0')}.ts`;
+        const filename = (0, utils_1.getSegmentFilename)(this.idx);
         const filename_dl = filename + '.dl';
         const filepath = path_1.default.join(this.videoSavedPath, filename);
         const filepath_dl = path_1.default.join(this.videoSavedPath, filename_dl);
@@ -105,6 +106,7 @@ class SegmentDownloader {
                 }
             }
             if (fs_1.default.existsSync(aes_path)) {
+                let canReturn = true;
                 // standardly decrypt ts stream
                 try {
                     let key_ = null;
@@ -125,11 +127,14 @@ class SegmentDownloader {
                 }
                 catch (error) {
                     console.error(error);
+                    canReturn = false;
                 }
                 if (fs_1.default.existsSync(filepath_dl)) {
                     fs_1.default.unlinkSync(filepath_dl);
                 }
-                return;
+                if (canReturn) {
+                    return;
+                }
             }
         }
         if (!fs_1.default.existsSync(filepath)) {

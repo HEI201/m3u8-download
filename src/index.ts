@@ -7,7 +7,7 @@ import type { Headers } from 'got';
 import got from 'got';
 import { Parser } from 'm3u8-parser';
 
-import { DefaultPathDownloadPath, HttpTimeout, WebsiteVideoFolder } from './config';
+import { DefaultPathDownloadPath, HttpTimeout } from './config';
 import { formatDuration, getSegmentFilename, patchHeaders, sleep } from "./utils";
 
 import sanitize from "sanitize-filename";
@@ -32,12 +32,14 @@ type M3u8DownloaderOptions = {
     m3u8_url: string,
     savedPath?: string,
     merge?: boolean,
+    m3u8TsPath?: string,
 };
 export default class M3u8Downloader {
     taskName: string;
     m3u8_url: string;
     savedPath = '';
     merge = true;
+    m3u8TsPath = '';
 
     headers: Headers;
     parser: Parser;
@@ -48,6 +50,7 @@ export default class M3u8Downloader {
         m3u8_url,
         savedPath = DefaultPathDownloadPath,
         merge = true,
+        m3u8TsPath = '',
     }: M3u8DownloaderOptions) {
         if (!m3u8_url) {
             throw new Error('请输入正确的M3U8-URL');
@@ -61,6 +64,7 @@ export default class M3u8Downloader {
         this.taskName = taskName;
         this.m3u8_url = m3u8_url;
         this.savedPath = savedPath;
+        this.m3u8TsPath = m3u8TsPath;
         this.headers = patchHeaders(this.m3u8_url);
     }
 
@@ -132,13 +136,14 @@ export default class M3u8Downloader {
         let m3u8 = '';
         m3u8 += '#EXTM3U\n';
         m3u8 += '#EXT-X-VERSION:3\n';
-        m3u8 += '#EXT-X-TARGETDURATION:' + segments[0].duration + '\n';
+        // @ts-ignore
+        m3u8 += '#EXT-X-TARGETDURATION:' + segments[0]?.duration + '\n';
         m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
         const videoFolder = path.basename(this.videoSavedPath);
         segments.forEach((segment: any, index: number) => {
             m3u8 += '#EXTINF:' + segment.duration + ',\n';
             m3u8 += path.join(
-                WebsiteVideoFolder,
+                this.m3u8TsPath,
                 videoFolder,
                 getSegmentFilename(index)
             ) + '\n';
