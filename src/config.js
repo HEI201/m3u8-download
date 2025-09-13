@@ -1,9 +1,6 @@
-export const DefaultPathDownloadPath = 'D:\\Video\\m3u8';
+import path from 'node:path';
 
-export const WebsiteVideoFolder = 'videos';
+const downloadSegments = ['G:', 'videos', 'm3u8', 'weimiao'];
+export const DefaultPathDownloadPath = path.join(...downloadSegments);
+export const merge = true;
 
-export const HttpTimeout = {
-    socket: 30000,
-    request: 30000,
-    response: 60000
-};

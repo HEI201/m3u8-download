@@ -7,7 +7,7 @@
     m3u8_url: 'm3u8_url like https://xxx.com/xxx.m3u8**',
     taskName: 'the name to save the file',
   })
-  await newTask.download() // optional await
+  await newTask.run() // optional await
 })()
 ```
 

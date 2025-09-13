@@ -1,5 +1,5 @@
-import M3u8Downloader from '../src';
-import { urls } from "./urls";
+import M3u8Downloader from '../src/index.js';
+import { urls } from "./urls.js";
 
 
 (async () => {
@@ -7,9 +7,8 @@ import { urls } from "./urls";
         const url = urls[index];
         let newTask = new M3u8Downloader({
             m3u8_url: url,
-            taskName: 'taskName' + index,
-            merge: false
+            videoName: 'taskName' + index,
         });
-        await newTask.download();
+        await newTask.run();
     }
 })();

@@ -1,5 +1,5 @@
-src
 test
 tsconfig.json
 
 .vscode
+node_modules

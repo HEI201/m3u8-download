@@ -1,243 +1,178 @@
-import fs from 'fs';
-import path from 'path';
 
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { execa } from 'execa';
 import ffmpegStatic from 'ffmpeg-static';
-import ffmpeg from 'fluent-ffmpeg';
-import got from 'got';
+import ky from 'ky';
 import { Parser } from 'm3u8-parser';
+import sanitize from 'sanitize-filename';
 
-import { DefaultPathDownloadPath, HttpTimeout } from './config.js';
-import { formatDuration, getSegmentFilename, patchHeaders, sleep } from "./utils/index.js";
+import { DefaultPathDownloadPath, merge } from './config.js';
+import { extractHostFromUrl, formatDuration, generateM3u8, getSegmentFilename, patchHeaders, removeLastPathSegment } from "./utils/index.js";
 
-import sanitize from "sanitize-filename";
-import FFmpegStreamReadable from "./FFmpegStreamReadable.js";
+import dayjs from 'dayjs';
 import SegmentDownloader from "./segmentDownloader.js";
 
 const ffmpegPath = ffmpegStatic.replace(/app.asar[\/\\]{1,2}/g, '');
 
-// folder structure:
-// savedPath
-//    videoSavedPath
-//        video.ts
-//        audio.ts
-//        video.mp4
-//    videoSavedPath
-//        video.ts
-//        audio.ts
-//        video.mp4
-
 
 export default class M3u8Downloader {
-    taskName;
-    m3u8_url;
-    savedPath = '';
-    merge = true;
-    m3u8TsPath = '';
-    videoFolder = '';
+  m3u8_url;
+  videoFolderName = '';
+  headers;
+  parser;
 
-    headers;
-    parser;
-    videoSavedPath = '';
+  constructor({
+    videoName = '',
+    m3u8_url,
+  }) {
+    if (!m3u8_url) {
+      throw new Error('请输入正确的M3U8-URL');
+    }
+    if (!videoName) {
+      videoName = dayjs().format('YYYYMMDD_HHmmss');
+    }
+    this.m3u8_url = m3u8_url;
+    this.headers = patchHeaders(m3u8_url);
+    this.videoFolderName = sanitize(videoName);
+  }
 
-    constructor({
-        taskName = '',
-        m3u8_url,
-        savedPath = DefaultPathDownloadPath,
-        merge = true,
-        m3u8TsPath = '',
-    }) {
-        if (!m3u8_url) {
-            throw new Error('请输入正确的M3U8-URL');
+  async parseM3u8() {
+    let hlsSrc = this.m3u8_url;
+    let parser = new Parser();
+    for (let retryIndex = 0; retryIndex < 3; retryIndex++) {
+      const response = await ky(hlsSrc, {
+        headers: this.headers,
+        timeout: 30000,
+      }).text();
+      if (!response) {
+        continue;
+      }
+      parser.push(response);
+      parser.end();
+      if (
+        parser.manifest.segments.length > 0 &&
+        !parser.manifest?.playlists?.length
+      ) {
+        break;
+      }
+
+      // handle master playlist and resolve to first variant playlist
+      // get the uri of the first playlist
+      // and resolve it to absolute url
+      // then re-parse the playlist
+      // until we get the segments
+      // or we reach the retry limit
+      // then we give up
+      const uri = parser.manifest.playlists?.[0]?.uri || '';
+      if (!uri.startsWith('http')) {
+        if (uri[0] === '/') {
+          hlsSrc = extractHostFromUrl(hlsSrc) + uri;
+        } else {
+          hlsSrc = removeLastPathSegment(hlsSrc) + uri;
         }
+      } else {
+        hlsSrc = uri;
+      }
+      this.m3u8_url = hlsSrc;
+      parser = new Parser();
+    }
+    this.parser = parser;
+    const count_seg = parser.manifest.segments.length;
+    if (count_seg == 0 || !parser.manifest.endList) {
+      return;
+    }
+    const duration = parser
+      .manifest
+      .segments
+      .reduce((acc, segment) => {
+        acc += segment.duration;
+        return acc;
+      }, 0);
+    console.log(`The resource has been parsed.`)
+    console.log(`There are ${count_seg} segments, duration: ${formatDuration(duration)}.`);
+  }
+  async run() {
+    await this.parseM3u8();
+    const videoSavedPath = path.join(
+      DefaultPathDownloadPath,
+      this.videoFolderName
+    );
 
-        if (!taskName) {
-            taskName = new Date().getTime() + '';
-        }
-
-        this.merge = merge;
-        this.taskName = taskName;
-        this.m3u8_url = m3u8_url;
-        this.savedPath = savedPath;
-        this.m3u8TsPath = m3u8TsPath;
-        this.headers = patchHeaders(this.m3u8_url);
-        this.videoFolder = sanitize(this.taskName);
+    // Ensure the directory exists
+    if (!fs.existsSync(videoSavedPath)) {
+      fs.mkdirSync(videoSavedPath, { recursive: true });
     }
 
-    async parseM3u8() {
-        let hlsSrc = this.m3u8_url;
-        let parser = new Parser();
-
-        for (let index = 0; index < 3; index++) {
-            const response = await got(hlsSrc, {
-                headers: this.headers,
-                timeout: HttpTimeout,
-            });
-
-            if (!response?.body) {
-                continue;
-            }
-
-            parser.push(response.body);
-            parser.end();
-
-            // if it is not the master playlist, then it is the media playlist
-            if (
-                parser.manifest.segments.length > 0 &&
-                !parser.manifest?.playlists?.length
-            ) {
-                break;
-            }
-
-            // master playlist case, get the first media playlist, continue to parse
-            // fixme: this can be optimized to get the best quality
-            const uri = parser.manifest.playlists[0].uri;
-            if (!uri.startsWith('http')) {
-                hlsSrc = uri[0] == '/' ?
-                    (hlsSrc.substr(0, hlsSrc.indexOf('/', 10)) + uri) :
-                    (hlsSrc.replace(/\/[^\/]*((\?.*)|$)/, '/') + uri);
-            } else {
-                hlsSrc = uri;
-            }
-
-            this.m3u8_url = hlsSrc;
-            parser = new Parser();
-        }
-
-        this.parser = parser;
-
-        // log
-        const count_seg = parser.manifest.segments.length;
-        if (count_seg == 0 || !parser.manifest.endList) {
-            return;
-        }
-
-        let duration = 0;
-        parser.manifest
-            .segments
-            .forEach((segment) => {
-                duration += segment.duration;
-            });
-        const msg = `
-        The resource has been parsed. There are ${count_seg} segments. 
-        duration: ${formatDuration(duration)}. 
-        start caching ...
-        `;
-        console.log(msg);
-
+    if (!fs.existsSync(videoSavedPath)) {
+      fs.mkdirSync(videoSavedPath, { recursive: true })
+    };
+    let segments = this.parser.manifest.segments;
+    const promises = [];
+    for (let i = 0; i < segments.length; i++) {
+      const segmentDownloadWorker = new SegmentDownloader({
+        idx: i,
+        segment: segments[i],
+        m3u8_url: this.m3u8_url,
+        videoSavedPath,
+        headers: this.headers,
+      });
+      promises.push(segmentDownloadWorker.run());
     }
+    await Promise.all(promises);
+    console.log('segments downloaded');
 
-    generateM3u8() {
-        const segments = this.parser.manifest.segments;
-        let m3u8 = '';
-        m3u8 += '#EXTM3U\n';
-        m3u8 += '#EXT-X-VERSION:3\n';
-        // @ts-ignore
-        m3u8 += '#EXT-X-TARGETDURATION:' + segments[0]?.duration + '\n';
-        m3u8 += '#EXT-X-MEDIA-SEQUENCE:0\n';
-        segments.forEach((segment, index) => {
-            m3u8 += '#EXTINF:' + segment.duration + ',\n';
-            m3u8 += path.join(
-                this.m3u8TsPath,
-                this.videoFolder,
-                getSegmentFilename(index)
-            ) + '\n';
-        });
-        m3u8 += '#EXT-X-ENDLIST\n';
-        return m3u8;
+    const m3u8 = generateM3u8(this.videoFolderName, this.parser);
+    const m3u8Path = path.join(videoSavedPath, 'index.m3u8');
+    fs.writeFileSync(m3u8Path, m3u8);
+    if (!merge) {
+      return;
     }
-
-    async download() {
-        await this.parseM3u8();
-
-        this.videoSavedPath = path.join(
-            this.savedPath,
-            sanitize(this.taskName)
-        );
-        !fs.existsSync(this.videoSavedPath) && fs.mkdirSync(this.videoSavedPath, { recursive: true });
-
-        let segments = this.parser.manifest.segments;
-        const promises = [];
-        for (let i = 0; i < segments.length; i++) {
-            const segmentDownloadWorker = new SegmentDownloader(
-                {
-                    idx: i,
-                    segment: segments[i],
-                    m3u8_url: this.m3u8_url,
-                    videoSavedPath: this.videoSavedPath,
-                    headers: this.headers,
-                }
-            );
-            promises.push(segmentDownloadWorker.download());
-        }
-        await Promise.all(promises);
-
-        console.log('download segments done');
-
-        // generate m3u8 file
-        const m3u8 = this.generateM3u8();
-        const m3u8Path = path.join(this.videoSavedPath, 'index.m3u8');
-        fs.writeFileSync(m3u8Path, m3u8);
-
-        if (!this.merge) {
-            return;
-        }
-
-        // download done, starting to merge ts files
-        let fileSegments = [];
-        for (let i = 0; i < segments.length; i++) {
-            let filepath = path.join(
-                this.videoSavedPath,
-                getSegmentFilename(i)
-            );
-            if (fs.existsSync(filepath)) {
-                fileSegments.push(filepath);
-            }
-        }
-        if (!fileSegments.length) {
-            // download failed, please check the validity of the link
-            return;
-        }
-
-        let outPathMP4 = path.join(this.videoSavedPath, Date.now() + ".mp4");
-        let outPathMP4_ = path.join(
-            this.savedPath,
-            sanitize(this.taskName) + '.mp4'
-        );
-
-        if (!fs.existsSync(ffmpegPath)) {
-            return;
-        }
-
-        let ffmpegInputStream = new FFmpegStreamReadable(null);
-        ffmpeg(ffmpegInputStream)
-            .setFfmpegPath(ffmpegPath)
-            .videoCodec('copy')
-            .audioCodec('copy')
-            .format('mp4')
-            .save(outPathMP4)
-            .on('error', (e) => {
-                // something went wrong while merging, try to merge manually
-                console.log(e);
-            })
-            .on('end', function () {
-                fs.existsSync(outPathMP4) && (fs.renameSync(outPathMP4, outPathMP4_));
-            });
-
-        for (let i = 0; i < fileSegments.length; i++) {
-
-            let percent = Math.ceil((i + 1) * 100 / fileSegments.length);
-            console.log(`merging ... [${percent}%]`);
-
-            let filePath = fileSegments[i];
-            fs.existsSync(filePath) && ffmpegInputStream.push(fs.readFileSync(filePath));
-
-            // @ts-ignore
-            while (ffmpegInputStream._readableState.length > 0) {
-                await sleep(100);
-            }
-        }
-
-        ffmpegInputStream.push(null);
-
+    let fileSegments = [];
+    for (let i = 0; i < segments.length; i++) {
+      let filepath = path.join(
+        videoSavedPath,
+        getSegmentFilename(i)
+      );
+      if (fs.existsSync(filepath)) {
+        fileSegments.push(filepath);
+      }
     }
+    if (!fileSegments.length) {
+      return;
+    }
+    let outPathMP4 = path.join(videoSavedPath, Date.now() + ".mp4");
+    let outPathMP4_ = path.join(
+      DefaultPathDownloadPath,
+      this.videoFolderName + '.mp4'
+    );
+    if (!fs.existsSync(ffmpegPath)) {
+      return;
+    }
+    // Create a file list for ffmpeg concat demuxer
+    const concatListPath = path.join(videoSavedPath, 'concat_list.txt');
+    const concatListContent = fileSegments.map(seg => `file '${seg.replace(/'/g, "'\\''")}'`).join('\n');
+    fs.writeFileSync(concatListPath, concatListContent);
+
+    // Use execa to run ffmpeg
+    try {
+      await execa(
+        ffmpegPath,
+        [
+          '-f', 'concat',
+          '-safe', '0',
+          '-i', concatListPath,
+          '-c', 'copy',
+          outPathMP4
+        ],
+        { stdio: 'inherit' }
+      );
+      if (fs.existsSync(outPathMP4)) {
+        fs.renameSync(outPathMP4, outPathMP4_);
+      }
+    } catch (e) {
+      console.log('ffmpeg merge error:', e);
+    }
+  }
 }
