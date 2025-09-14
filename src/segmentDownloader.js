@@ -7,8 +7,6 @@ import { pipeline } from 'node:stream/promises';
 import logger from './log.js';
 import { extractHostFromUrl, getSegmentFilename } from "./utils/index.js";
 
-const aes_file_name = 'aes.key';
-
 const getParentUri = (m3u8_url = '') => {
   const partent_uri = m3u8_url.replace(/([^\/]*\?.*$)|([^\/]*$)/g, '');
   return partent_uri;
@@ -99,9 +97,16 @@ export default class SegmentDownloader {
         fs.renameSync(filepath_dl, filepath);
         break;
       }
+      // normarize segment.key.uri as part of file name
+      // avoid special characters in uri to be used as file name
+      const hash = crypto.createHash('sha1').update(segment.key.uri).digest('hex');
+      const aes_file_name = 'aes_' + hash + '.key';
       const aes_path = path.join(this.videoSavedPath, aes_file_name);
+      logger.info(`key uri: ${segment.key.uri}`);
       if (!fs.existsSync(aes_path)) {
         const key_url = getKeyUrl(segment.key.uri, this.m3u8_url);
+        logger.info(`downloading key for segment ${filename}`);
+        logger.info(`key url: ${key_url}`);
         if (/^http/.test(key_url)) {
           try {
             logger.info(`Downloading AES key from ${key_url}`);
