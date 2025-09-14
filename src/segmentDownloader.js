@@ -1,3 +1,4 @@
+// @ts-nocheck
 import download from 'download';
 import * as crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -6,11 +7,11 @@ import { extractHostFromUrl, getSegmentFilename } from "./utils/index.js";
 
 const aes_file_name = 'aes.key';
 
-const getParentUri = (m3u8_url) => {
+const getParentUri = (m3u8_url = '') => {
   const partent_uri = m3u8_url.replace(/([^\/]*\?.*$)|([^\/]*$)/g, '');
   return partent_uri;
 }
-const getKeyUrl = (key_uri, m3u8_url) => {
+const getKeyUrl = (key_uri = '', m3u8_url = '') => {
   const partent_uri = getParentUri(m3u8_url);
   let key_url = key_uri;
   if (
@@ -32,7 +33,7 @@ const getKeyUrl = (key_uri, m3u8_url) => {
   }
   return key_url;
 }
-const getSegmentUrl = (segment_uri, m3u8_url) => {
+const getSegmentUrl = (segment_uri = '', m3u8_url = '') => {
   const partent_uri = getParentUri(m3u8_url);
   let ts_url = '';
   if (/^http.*/.test(segment_uri)) {
@@ -53,9 +54,9 @@ export default class SegmentDownloader {
   constructor({
     segment,
     idx = 0,
-    m3u8_url,
-    videoSavedPath,
-    headers,
+    m3u8_url = '',
+    videoSavedPath = '',
+    headers = {},
   }) {
     this.segment = segment;
     this.idx = idx;
@@ -129,7 +130,11 @@ export default class SegmentDownloader {
           } else {
             iv_ = Buffer.from(this.idx.toString(16).padStart(32, '0'), 'hex');
           }
-          const cipher = crypto.createDecipheriv((segment.key.method + "-cbc").toLowerCase(), key_, iv_);
+          const cipher = crypto.createDecipheriv(
+            (segment.key.method + "-cbc").toLowerCase(),
+            key_,
+            iv_
+          );
           cipher.on('error', console.error);
           const inputData = fs.readFileSync(filepath_dl);
           const outputData = Buffer.concat([cipher.update(inputData), cipher.final()]);

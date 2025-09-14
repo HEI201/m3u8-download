@@ -21,11 +21,11 @@ export default class M3u8Downloader {
   m3u8_url;
   videoFolderName = '';
   headers;
-  parser;
+  parser = new Parser();
 
   constructor({
     videoName = '',
-    m3u8_url,
+    m3u8_url = '',
   }) {
     if (!m3u8_url) {
       throw new Error('请输入正确的M3U8-URL');
@@ -65,6 +65,7 @@ export default class M3u8Downloader {
       // until we get the segments
       // or we reach the retry limit
       // then we give up
+      // @ts-ignore
       const uri = parser.manifest.playlists?.[0]?.uri || '';
       if (!uri.startsWith('http')) {
         if (uri[0] === '/') {
