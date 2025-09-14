@@ -16,7 +16,9 @@ import dayjs from 'dayjs';
 import logger from './log.js';
 import SegmentDownloader from "./segmentDownloader.js";
 
-const ffmpegPath = ffmpegStatic.replace(/app.asar[\/\\]{1,2}/g, '');
+const ffmpegPath = (ffmpegStatic || '').replace(/app.asar[\/\\]{1,2}/g, '');
+logger.info(`ffmpegStatic: ${ffmpegStatic}`)
+logger.info(`FFmpeg path: ${ffmpegPath}`)
 
 
 export default class M3u8Downloader {
@@ -102,17 +104,17 @@ export default class M3u8Downloader {
       DefaultPathDownloadPath,
       this.videoFolderName
     );
-
+    logger.info(`downloading: ${chalk.yellow(this.videoFolderName)}`);
+    logger.info(`m3u8 url: ${chalk.yellow(this.m3u8_url)}`);
+    logger.info(`save path: ${chalk.yellow(videoSavedPath)}`);
     // Ensure the directory exists
     if (!fs.existsSync(videoSavedPath)) {
+      logger.info(`Creating directory: ${chalk.yellow(videoSavedPath)}`);
       fs.mkdirSync(videoSavedPath, { recursive: true });
     }
-
-    if (!fs.existsSync(videoSavedPath)) {
-      fs.mkdirSync(videoSavedPath, { recursive: true })
-    };
     let segments = this.parser.manifest.segments;
     for (let i = 0; i < segments.length; i++) {
+      logger.info(`Downloading segment ${chalk.yellow(i + 1)} of ${chalk.yellow(segments.length)}...`);
       const segmentDownloadWorker = new SegmentDownloader({
         idx: i,
         segment: segments[i],
