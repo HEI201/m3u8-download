@@ -11,7 +11,9 @@ import sanitize from 'sanitize-filename';
 import { DefaultPathDownloadPath, merge } from './config.js';
 import { extractHostFromUrl, formatDuration, generateM3u8, getSegmentFilename, patchHeaders, removeLastPathSegment } from "./utils/index.js";
 
+import chalk from 'chalk';
 import dayjs from 'dayjs';
+import logger from './log.js';
 import SegmentDownloader from "./segmentDownloader.js";
 
 const ffmpegPath = ffmpegStatic.replace(/app.asar[\/\\]{1,2}/g, '');
@@ -91,8 +93,8 @@ export default class M3u8Downloader {
         acc += segment.duration;
         return acc;
       }, 0);
-    console.log(`The resource has been parsed.`)
-    console.log(`There are ${count_seg} segments, duration: ${formatDuration(duration)}.`);
+    logger.info(`The resource has been ${chalk.green('parsed')}.`)
+    logger.info(`There are ${chalk.blue(count_seg)} segments, duration: ${chalk.blue(formatDuration(duration))}.`);
   }
   async run() {
     await this.parseM3u8();
@@ -110,7 +112,6 @@ export default class M3u8Downloader {
       fs.mkdirSync(videoSavedPath, { recursive: true })
     };
     let segments = this.parser.manifest.segments;
-    const promises = [];
     for (let i = 0; i < segments.length; i++) {
       const segmentDownloadWorker = new SegmentDownloader({
         idx: i,
@@ -119,10 +120,9 @@ export default class M3u8Downloader {
         videoSavedPath,
         headers: this.headers,
       });
-      promises.push(segmentDownloadWorker.run());
+      await segmentDownloadWorker.run()
     }
-    await Promise.all(promises);
-    console.log('segments downloaded');
+    logger.info(`segments ${chalk.green('downloaded')}`);
 
     const m3u8 = generateM3u8(this.videoFolderName, this.parser);
     const m3u8Path = path.join(videoSavedPath, 'index.m3u8');
@@ -157,6 +157,7 @@ export default class M3u8Downloader {
     fs.writeFileSync(concatListPath, concatListContent);
 
     // Use execa to run ffmpeg
+    logger.info('Merging segments into a single MP4 file...');
     try {
       await execa(
         ffmpegPath,
@@ -173,7 +174,7 @@ export default class M3u8Downloader {
         fs.renameSync(outPathMP4, outPathMP4_);
       }
     } catch (e) {
-      console.log('ffmpeg merge error:', e);
+      logger.error('ffmpeg merge error:', e);
     }
   }
 }

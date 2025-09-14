@@ -1,8 +1,10 @@
 // @ts-nocheck
 import download from 'download';
-import * as crypto from 'node:crypto';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import logger from './log.js';
 import { extractHostFromUrl, getSegmentFilename } from "./utils/index.js";
 
 const aes_file_name = 'aes.key';
@@ -86,7 +88,7 @@ export default class SegmentDownloader {
           },
         );
       } catch (error) {
-        console.log('Something went wrong while downloading segment', error);
+        logger.error('Something went wrong while downloading segment', error);
         if (fs.existsSync(filepath_dl)) {
           fs.unlinkSync(filepath_dl);
         }
@@ -102,6 +104,7 @@ export default class SegmentDownloader {
         const key_url = getKeyUrl(segment.key.uri, this.m3u8_url);
         if (/^http/.test(key_url)) {
           try {
+            logger.info(`Downloading AES key from ${key_url}`);
             await download(
               key_url,
               this.videoSavedPath,
@@ -110,7 +113,7 @@ export default class SegmentDownloader {
               }
             );
           } catch (error) {
-            console.error(error);
+            logger.error(error);
           }
         }
       }
@@ -130,17 +133,20 @@ export default class SegmentDownloader {
           } else {
             iv_ = Buffer.from(this.idx.toString(16).padStart(32, '0'), 'hex');
           }
+          logger.info(`Decrypting segment ${filename} with method ${segment.key.method}`);
           const cipher = crypto.createDecipheriv(
             (segment.key.method + "-cbc").toLowerCase(),
             key_,
             iv_
           );
-          cipher.on('error', console.error);
-          const inputData = fs.readFileSync(filepath_dl);
-          const outputData = Buffer.concat([cipher.update(inputData), cipher.final()]);
-          fs.writeFileSync(filepath, outputData);
+          cipher.on('error', logger.error);
+          await pipeline(
+            fs.createReadStream(filepath_dl),
+            cipher,
+            fs.createWriteStream(filepath)
+          );
         } catch (error) {
-          console.error(error);
+          logger.error(error);
           canReturn = false;
         }
         if (fs.existsSync(filepath_dl)) {

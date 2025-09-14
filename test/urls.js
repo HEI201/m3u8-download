@@ -1,1 +1,1 @@
-export const urls = ['https://fangdaoproduct.yaocaiwuziyou.com/f3a7c744780841a496eb3050771931bf/d0cbd759b4855124ef1ae441872cb6db-sd-encrypt-stream.m3u8?auth_key=1754238281-bf8e690baf9e454883f6f99cdd6068be-0-16cb241be75a0a9d485a4f6a91e2352c']
+export const urls = ['https://fangdaoproduct.yaocaiwuziyou.com/b7e35596803243c0b1a3cc1f5bcadad5/9f8acc80e8c7a13707437060b977b773-sd-encrypt-stream.m3u8?auth_key=1754266780-2477183effae4e919eb78b87d7ff83cd-0-0b9702facd7f45a69ad46f420de37e98']
