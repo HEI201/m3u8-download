@@ -129,14 +129,18 @@ export default class SegmentDownloader {
           let iv_ = null;
           key_ = fs.readFileSync(aes_path);
           if (key_.length == 32) {
-            key_ = Buffer.from(fs.readFileSync(aes_path, {
-              encoding: 'utf8'
-            }), 'hex');
+            key_ = Buffer.from(
+              fs.readFileSync(aes_path, { encoding: 'utf8' }),
+              'hex'
+            );
           }
           if (segment.key.iv != null && (segment.key.iv).buffer) {
             iv_ = Buffer.from((segment.key.iv).buffer);
           } else {
-            iv_ = Buffer.from(this.idx.toString(16).padStart(32, '0'), 'hex');
+            iv_ = Buffer.from(
+              this.idx.toString(16).padStart(32, '0'),
+              'hex'
+            );
           }
           logger.info(`Decrypting segment ${filename} with method ${segment.key.method}`);
           const cipher = crypto.createDecipheriv(
