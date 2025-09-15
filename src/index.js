@@ -42,7 +42,15 @@ export default class M3u8Downloader {
     this.videoFolderName = sanitize(videoName);
   }
 
+  getVideoFilePath() {
+    return path.join(
+      DefaultPathDownloadPath,
+      this.videoFolderName + '.mp4'
+    );
+  }
+
   async parseM3u8() {
+    logger.info(`Parsing m3u8 from: ${chalk.yellow(this.m3u8_url)}`);
     let hlsSrc = this.m3u8_url;
     let parser = new Parser();
     for (let retryIndex = 0; retryIndex < 3; retryIndex++) {
@@ -99,6 +107,7 @@ export default class M3u8Downloader {
     logger.info(`There are ${chalk.blue(count_seg)} segments, duration: ${chalk.blue(formatDuration(duration))}.`);
   }
   async run() {
+    logger.info(`download running...`);
     await this.parseM3u8();
     const videoSavedPath = path.join(
       DefaultPathDownloadPath,
@@ -146,10 +155,7 @@ export default class M3u8Downloader {
       return;
     }
     let outPathMP4 = path.join(videoSavedPath, Date.now() + ".mp4");
-    let outPathMP4_ = path.join(
-      DefaultPathDownloadPath,
-      this.videoFolderName + '.mp4'
-    );
+    let outPathMP4_ = this.getVideoFilePath();
     if (!fs.existsSync(ffmpegPath)) {
       return;
     }
